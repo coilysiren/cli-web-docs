@@ -70,7 +70,7 @@ func Render(w io.Writer, p Page) error {
 		Nav:       p.Nav,
 		Body:      p.Body,
 		ExtraHead: p.ExtraHead,
-		CSS:       template.CSS(css),
+		CSS:       template.CSS(css), //nolint:gosec // caller supplies operator-controlled stylesheet
 	})
 }
 
