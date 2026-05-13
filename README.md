@@ -40,6 +40,10 @@ See `examples/render/` for a runnable example that emits docs for a tiny CLI.
 - One section per command, anchored by command path (`#hello`, `#sub-foo-bar`)
 - Per-command pages (`Options.PerPage = true`) at `./<path>.html`
 
+## Hosting
+
+cli-web-docs writes HTML to disk. Anything that serves static files works: GitHub Pages, S3 + CloudFront, nginx, Caddy. See [`deploy/Caddyfile.example`](deploy/Caddyfile.example) for a Tailscale-bound private-docs posture and a public-docs alternative.
+
 ## Composition
 
 Independent of cli-guard - operates on any `*cli.Command`. A Guard-wrapped command renders the same as a bare one. Annotations on `cli.Command.Metadata` are surfaced in the generated docs if present (see `Options.MetadataKeys`).

@@ -1,0 +1,52 @@
+# cli-web-docs static site served by Caddy
+#
+# cli-web-docs writes HTML files to a directory. This Caddyfile points
+# Caddy at that directory and serves it. Adapt the site address and the
+# root path to your environment.
+#
+# Usage:
+#
+#   1. Generate the site:
+#        ./your-app docs --out /var/www/cli-docs
+#      (or however your binary wires webdocs.Render)
+#
+#   2. caddy run --config deploy/Caddyfile.example
+#
+# Two common postures below. Uncomment the one you want.
+
+# --- Posture A: Tailscale-only (private docs) -------------------------
+#
+# Bind to your tailnet hostname so the site is only reachable from
+# authenticated tailnet peers. Cert via Tailscale's MagicDNS.
+
+docs.your-tailnet.ts.net {
+	root * /var/www/cli-docs
+	tls {
+		get_certificate tailscale
+	}
+	file_server {
+		index index.html
+	}
+	encode gzip zstd
+}
+
+# --- Posture B: Public docs (commented out by default) ----------------
+#
+# Uncomment and replace the hostname. Caddy will provision a Let's
+# Encrypt cert automatically. No auth - this is a public docs site.
+#
+# docs.example.com {
+#     root * /var/www/cli-docs
+#     file_server {
+#         index index.html
+#     }
+#     encode gzip zstd
+#     header {
+#         # Static site, safe to cache.
+#         Cache-Control "public, max-age=300"
+#         # Belt-and-suspenders for a docs-only host.
+#         X-Content-Type-Options nosniff
+#         X-Frame-Options DENY
+#         Referrer-Policy strict-origin-when-cross-origin
+#     }
+# }
