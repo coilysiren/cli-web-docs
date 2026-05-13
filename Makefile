@@ -1,19 +1,19 @@
 .PHONY: build test vet lint tidy cover
 
-build:
+build: ## Build all packages.
 	go build ./...
 
-test:
+test: ## Run the unit test suite.
 	go test ./...
 
-vet:
+vet: ## go vet across the tree.
 	go vet ./...
 
-lint:
+lint: ## Lint with golangci-lint.
 	golangci-lint run ./...
 
-tidy:
+tidy: ## go mod tidy.
 	go mod tidy
 
-cover:
+cover: ## Unit tests with a coverage profile.
 	go test -coverprofile=coverage.out ./...
