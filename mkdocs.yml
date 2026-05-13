@@ -1,6 +1,6 @@
 site_name: coilysiren/cli-web-docs
 site_description: Static HTML documentation generator for urfave/cli v3
-site_url: https://cli-web-docs.coilysiren.me/
+site_url: https://coilysiren.github.io/cli-web-docs/
 repo_url: https://github.com/coilysiren/cli-web-docs
 edit_uri: edit/main/docs/
 nav:
