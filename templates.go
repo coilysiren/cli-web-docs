@@ -39,21 +39,28 @@ code, kbd, pre {
 }
 code, kbd { padding: .15em .35em; border-radius: 3px; }
 pre { padding: .75rem 1rem; border-radius: 6px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .muted { color: var(--muted); }
-.flag-name { font-weight: 600; }
-ul.flags { list-style: none; padding-left: 0; }
-ul.flags li { margin-bottom: .5rem; }
-nav.tree ul { list-style: none; padding-left: 1rem; }
-nav.tree { border: 1px solid var(--rule); border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+nav.sidebar {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1rem 0 2rem;
+  background: var(--code-bg);
+}
+nav.sidebar ul { list-style: none; padding-left: 1rem; margin: 0; }
+nav.sidebar > ul { padding-left: 0; }
+nav.sidebar li { margin: .25rem 0; }
 .path-segment { color: var(--muted); }
-.metadata { font-size: .9rem; color: var(--muted); margin: .5rem 0; }
-.metadata dt { font-weight: 600; display: inline; }
-.metadata dd { display: inline; margin: 0 1rem 0 .25rem; }
+.crumb { font-size: .9rem; margin-bottom: 1rem; }
+table { border-collapse: collapse; margin: 1rem 0; }
+th, td { border: 1px solid var(--rule); padding: .4rem .6rem; text-align: left; }
+th { background: var(--code-bg); }
 `
 
-const singlePageTpl = `<!doctype html>
+const layoutTpl = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -62,135 +69,15 @@ const singlePageTpl = `<!doctype html>
   <style>{{.CSS}}</style>
 </head>
 <body>
-  <h1>{{.Title}}</h1>
-  {{if .Root.Usage}}<p class="muted">{{.Root.Usage}}</p>{{end}}
-  {{if .Root.Description}}<p>{{.Root.Description}}</p>{{end}}
+  {{if .Crumb}}<p class="muted crumb">{{.Crumb}}</p>{{end}}
+  <h1>{{.Heading}}</h1>
 
-  <nav class="tree">
+  <nav class="sidebar">
     <strong>Commands</strong>
-    {{template "subtree" .Root}}
+    {{.Nav}}
   </nav>
 
-  {{template "node" dict "Node" .Root "MetadataKeys" .MetadataKeys}}
-</body>
-</html>
-{{define "subtree"}}
-  {{if .Subcommands}}
-  <ul>
-    {{range .Subcommands}}
-      <li><a href="#{{.Anchor}}"><code>{{join .Path " "}}</code></a> {{if .Usage}}<span class="muted">{{.Usage}}</span>{{end}}
-        {{template "subtree" .}}
-      </li>
-    {{end}}
-  </ul>
-  {{end}}
-{{end}}
-{{define "node"}}
-  {{$n := .Node}}{{$keys := .MetadataKeys}}
-  <section id="{{$n.Anchor}}">
-    <h2><code>{{join $n.Path " "}}</code></h2>
-    {{if $n.Usage}}<p>{{$n.Usage}}</p>{{end}}
-    {{if $n.Description}}<p>{{$n.Description}}</p>{{end}}
-    {{if $n.ArgsUsage}}<p><strong>Usage:</strong> <code>{{join $n.Path " "}} {{$n.ArgsUsage}}</code></p>{{end}}
-
-    {{if hasMetadata $n.Metadata $keys}}
-      <dl class="metadata">
-        {{range $keys}}{{if metaValue $n.Metadata .}}<dt>{{.}}:</dt><dd>{{metaValue $n.Metadata .}}</dd>{{end}}{{end}}
-      </dl>
-    {{end}}
-
-    {{if $n.Flags}}
-      <h3>Flags</h3>
-      <ul class="flags">
-        {{range $n.Flags}}
-          <li>
-            <span class="flag-name">--{{.Name}}</span>{{range .Aliases}} / <span class="flag-name">--{{.}}</span>{{end}}
-            {{if .Default}}<span class="muted"> (default: <code>{{.Default}}</code>)</span>{{end}}
-            {{if .Usage}}<br><span class="muted">{{.Usage}}</span>{{end}}
-          </li>
-        {{end}}
-      </ul>
-    {{end}}
-  </section>
-  {{range $n.Subcommands}}{{template "node" dict "Node" . "MetadataKeys" $keys}}{{end}}
-{{end}}
-`
-
-const indexTpl = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{.Title}}</title>
-  <style>{{.CSS}}</style>
-</head>
-<body>
-  <h1>{{.Title}}</h1>
-  {{if .Root.Usage}}<p class="muted">{{.Root.Usage}}</p>{{end}}
-  {{if .Root.Description}}<p>{{.Root.Description}}</p>{{end}}
-
-  <nav class="tree">
-    <strong>Commands</strong>
-    {{template "subtree" .Root}}
-  </nav>
-</body>
-</html>
-{{define "subtree"}}
-  {{if .Subcommands}}
-  <ul>
-    {{range .Subcommands}}
-      <li><a href="{{.Slug}}"><code>{{join .Path " "}}</code></a> {{if .Usage}}<span class="muted">{{.Usage}}</span>{{end}}
-        {{template "subtree" .}}
-      </li>
-    {{end}}
-  </ul>
-  {{end}}
-{{end}}
-`
-
-const perPageTpl = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{join .Current.Path " "}} - {{.Title}}</title>
-  <style>{{.CSS}}</style>
-</head>
-<body>
-  <p class="muted"><a href="index.html">{{.Root.Name}}</a> / <span class="path-segment">{{join .Current.Path " "}}</span></p>
-  <h1><code>{{join .Current.Path " "}}</code></h1>
-  {{$n := .Current}}{{$keys := .MetadataKeys}}
-  {{if $n.Usage}}<p>{{$n.Usage}}</p>{{end}}
-  {{if $n.Description}}<p>{{$n.Description}}</p>{{end}}
-  {{if $n.ArgsUsage}}<p><strong>Usage:</strong> <code>{{join $n.Path " "}} {{$n.ArgsUsage}}</code></p>{{end}}
-
-  {{if hasMetadata $n.Metadata $keys}}
-    <dl class="metadata">
-      {{range $keys}}{{if metaValue $n.Metadata .}}<dt>{{.}}:</dt><dd>{{metaValue $n.Metadata .}}</dd>{{end}}{{end}}
-    </dl>
-  {{end}}
-
-  {{if $n.Flags}}
-    <h2>Flags</h2>
-    <ul class="flags">
-      {{range $n.Flags}}
-        <li>
-          <span class="flag-name">--{{.Name}}</span>{{range .Aliases}} / <span class="flag-name">--{{.}}</span>{{end}}
-          {{if .Default}}<span class="muted"> (default: <code>{{.Default}}</code>)</span>{{end}}
-          {{if .Usage}}<br><span class="muted">{{.Usage}}</span>{{end}}
-        </li>
-      {{end}}
-    </ul>
-  {{end}}
-
-  {{if $n.Subcommands}}
-    <h2>Subcommands</h2>
-    <ul>
-      {{range $n.Subcommands}}
-        <li><a href="{{.Slug}}"><code>{{join .Path " "}}</code></a> {{if .Usage}}<span class="muted">- {{.Usage}}</span>{{end}}</li>
-      {{end}}
-    </ul>
-  {{end}}
+  {{.Body}}
 </body>
 </html>
 `

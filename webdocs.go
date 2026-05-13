@@ -1,31 +1,45 @@
-// Package webdocs renders a urfave/cli v3 command tree as static HTML
-// documentation. The output is plain HTML with embedded CSS and no
-// JavaScript - serve it from any static host, ship it in a release
-// artifact, point a browser at it offline.
+// Package webdocs renders a urfave/cli v3 command tree as a static HTML
+// documentation site.
+//
+// Pipeline:
+//
+//  1. urfave/cli-docs/v3 generates canonical Markdown from the command tree.
+//  2. yuin/goldmark renders the Markdown as HTML (GFM tables, footnotes,
+//     fenced code blocks).
+//  3. webdocs wraps the rendered HTML in a layout shell: title, dark-mode-
+//     aware CSS, command-tree nav, optional per-command pages.
+//
+// The pipeline keeps this package thin. Any improvement to cli-docs'
+// Markdown shape lands here automatically; goldmark gives CommonMark + GFM
+// for free.
 //
 // Two layout modes:
 //
-//   - Single-page (Options.PerPage = false, default): one index.html with
-//     every command inlined under a section anchor.
-//   - Multi-page (Options.PerPage = true): one HTML file per command at
-//     "<path>.html", index.html lists the tree.
+//   - Single-page (default): one index.html with cli-docs's full Markdown
+//     for the root command (subcommands inlined) rendered into one page.
+//   - Multi-page (Options.PerPage = true): one HTML file per visible
+//     subcommand, plus an index.html that lists the tree.
 //
 // Independent of every other cli-* extension. Operates on any
 // *cli.Command via the public urfave/cli API.
 package webdocs
 
 import (
+	"bytes"
 	"fmt"
 	"html/template"
 	"os"
 	"path/filepath"
 	"strings"
 
+	docs "github.com/urfave/cli-docs/v3"
 	"github.com/urfave/cli/v3"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 // Options control the rendered output. Zero value is usable: single-page
-// mode, no metadata surfaced, default CSS, title taken from cmd.Name.
+// mode, default CSS, title taken from cmd.Name.
 type Options struct {
 	// OutputDir is the directory to write into. Created if it does not
 	// exist. Required.
@@ -34,13 +48,9 @@ type Options struct {
 	// Title overrides the page <title>. Defaults to the root command name.
 	Title string
 
-	// PerPage = true emits one HTML file per command at "<path>.html"
-	// instead of a single index.html.
+	// PerPage = true emits one HTML file per visible subcommand at
+	// "<path>.html" plus an index.html that lists the tree.
 	PerPage bool
-
-	// MetadataKeys are cli.Command.Metadata keys to surface in the
-	// rendered docs. Order is preserved. Unknown keys are skipped silently.
-	MetadataKeys []string
 
 	// CSS overrides the embedded default stylesheet. Empty = use the
 	// default.
@@ -67,185 +77,176 @@ func Render(cmd *cli.Command, opts Options) error {
 		css = defaultCSS
 	}
 
-	root := buildNode(cmd, nil)
-
 	if opts.PerPage {
-		return renderPerPage(root, title, css, opts.MetadataKeys, opts.OutputDir)
+		return renderPerPage(cmd, title, css, opts.OutputDir)
 	}
-	return renderSinglePage(root, title, css, opts.MetadataKeys, opts.OutputDir)
+	return renderSinglePage(cmd, title, css, opts.OutputDir)
 }
 
-// Node is the in-memory shape of a command in the docs tree.
-type Node struct {
-	Name        string
-	Path        []string // ["myapp", "sub", "leaf"]
-	Usage       string
-	Description string
-	ArgsUsage   string
-	Flags       []FlagDoc
-	Subcommands []*Node
-	Metadata    map[string]any
-}
-
-// FlagDoc is the rendered shape of a flag.
-type FlagDoc struct {
-	Name    string
-	Aliases []string
-	Usage   string
-	Default string
-}
-
-func buildNode(cmd *cli.Command, parentPath []string) *Node {
-	path := append(append([]string(nil), parentPath...), cmd.Name)
-	n := &Node{
-		Name:        cmd.Name,
-		Path:        path,
-		Usage:       cmd.Usage,
-		Description: cmd.Description,
-		ArgsUsage:   cmd.ArgsUsage,
-		Metadata:    cmd.Metadata,
+func md2html(md string) (template.HTML, error) {
+	g := goldmark.New(goldmark.WithExtensions(extension.GFM))
+	var buf bytes.Buffer
+	if err := g.Convert([]byte(md), &buf); err != nil {
+		return "", fmt.Errorf("webdocs: goldmark convert: %w", err)
 	}
-	for _, f := range cmd.Flags {
-		n.Flags = append(n.Flags, flagDoc(f))
-	}
-	for _, sub := range cmd.Commands {
-		if sub.Hidden {
-			continue
-		}
-		n.Subcommands = append(n.Subcommands, buildNode(sub, path))
-	}
-	return n
+	return template.HTML(buf.String()), nil //nolint:gosec // goldmark output is HTML by intent
 }
 
-func flagDoc(f cli.Flag) FlagDoc {
-	d := FlagDoc{}
-	names := f.Names()
-	if len(names) > 0 {
-		d.Name = names[0]
-		if len(names) > 1 {
-			d.Aliases = names[1:]
-		}
-	}
-	if df, ok := f.(cli.DocGenerationFlag); ok {
-		d.Usage = df.GetUsage()
-		d.Default = df.GetDefaultText()
-	}
-	return d
+// page is the layout-template input.
+type page struct {
+	Title    string
+	CSS      template.CSS
+	Heading  string
+	Crumb    template.HTML
+	Body     template.HTML
+	Nav      template.HTML
+	IsRoot   bool
+	HomeHref string
 }
 
-// Anchor returns the HTML id used for a node within a single-page render.
-func (n *Node) Anchor() string {
-	return strings.Join(n.Path, "-")
-}
-
-// Slug returns the per-page filename for a node ("path-to-cmd.html").
-func (n *Node) Slug() string {
-	if len(n.Path) <= 1 {
-		return "index.html"
-	}
-	return strings.Join(n.Path[1:], "-") + ".html"
-}
-
-type pageData struct {
-	Title        string
-	CSS          template.CSS
-	Root         *Node
-	MetadataKeys []string
-	PerPage      bool
-	// Current is the node being rendered on a per-page emission.
-	Current *Node
-}
-
-func renderSinglePage(root *Node, title, css string, mdKeys []string, outDir string) error {
-	t, err := template.New("page").Funcs(tplFuncs).Parse(singlePageTpl)
+func renderSinglePage(cmd *cli.Command, title, css, outDir string) error {
+	md, err := docs.ToMarkdown(cmd)
 	if err != nil {
-		return fmt.Errorf("webdocs: parse template: %w", err)
+		return fmt.Errorf("webdocs: cli-docs ToMarkdown: %w", err)
 	}
-	f, err := os.Create(filepath.Join(outDir, "index.html"))
+	body, err := md2html(md)
 	if err != nil {
-		return fmt.Errorf("webdocs: create index.html: %w", err)
+		return err
 	}
-	defer f.Close()
-	return t.Execute(f, pageData{
-		Title:        title,
-		CSS:          template.CSS(css),
-		Root:         root,
-		MetadataKeys: mdKeys,
+	nav, err := buildNavHTML(cmd, "")
+	if err != nil {
+		return err
+	}
+	return writeLayout(filepath.Join(outDir, "index.html"), page{
+		Title:   title,
+		CSS:     template.CSS(css),
+		Heading: title,
+		Body:    body,
+		Nav:     nav,
+		IsRoot:  true,
 	})
 }
 
-func renderPerPage(root *Node, title, css string, mdKeys []string, outDir string) error {
-	t, err := template.New("page").Funcs(tplFuncs).Parse(perPageTpl)
+func renderPerPage(root *cli.Command, title, css, outDir string) error {
+	// Index lists the tree only; the root's own Markdown is rendered
+	// inline under it.
+	rootMD, err := docs.ToMarkdown(root)
 	if err != nil {
-		return fmt.Errorf("webdocs: parse template: %w", err)
+		return fmt.Errorf("webdocs: cli-docs ToMarkdown root: %w", err)
 	}
-	// Index page lists the tree.
-	idx, err := template.New("index").Funcs(tplFuncs).Parse(indexTpl)
+	rootBody, err := md2html(rootMD)
 	if err != nil {
-		return fmt.Errorf("webdocs: parse index template: %w", err)
-	}
-	f, err := os.Create(filepath.Join(outDir, "index.html"))
-	if err != nil {
-		return fmt.Errorf("webdocs: create index.html: %w", err)
-	}
-	if err := idx.Execute(f, pageData{
-		Title:        title,
-		CSS:          template.CSS(css),
-		Root:         root,
-		MetadataKeys: mdKeys,
-		PerPage:      true,
-	}); err != nil {
-		f.Close()
 		return err
 	}
-	f.Close()
+	nav, err := buildNavHTML(root, "")
+	if err != nil {
+		return err
+	}
+	if err := writeLayout(filepath.Join(outDir, "index.html"), page{
+		Title:   title,
+		CSS:     template.CSS(css),
+		Heading: title,
+		Body:    rootBody,
+		Nav:     nav,
+		IsRoot:  true,
+	}); err != nil {
+		return err
+	}
 
-	// Walk and render each non-root node.
-	return walk(root, func(n *Node) error {
-		if len(n.Path) == 1 {
+	// One page per visible subcommand.
+	var walk func(prefix []string, cmd *cli.Command) error
+	walk = func(prefix []string, cmd *cli.Command) error {
+		if cmd.Hidden {
 			return nil
 		}
-		out, err := os.Create(filepath.Join(outDir, n.Slug()))
+		path := append(append([]string(nil), prefix...), cmd.Name)
+		md, err := docs.ToMarkdown(cmd)
 		if err != nil {
-			return fmt.Errorf("webdocs: create %s: %w", n.Slug(), err)
+			return fmt.Errorf("webdocs: cli-docs ToMarkdown %s: %w", strings.Join(path, " "), err)
 		}
-		defer out.Close()
-		return t.Execute(out, pageData{
-			Title:        title,
-			CSS:          template.CSS(css),
-			Root:         root,
-			MetadataKeys: mdKeys,
-			PerPage:      true,
-			Current:      n,
-		})
-	})
-}
-
-func walk(n *Node, fn func(*Node) error) error {
-	if err := fn(n); err != nil {
-		return err
+		body, err := md2html(md)
+		if err != nil {
+			return err
+		}
+		crumb := template.HTML( //nolint:gosec
+			`<a href="index.html">` + template.HTMLEscapeString(root.Name) + `</a> / ` +
+				`<span class="path-segment">` + template.HTMLEscapeString(strings.Join(path, " ")) + `</span>`,
+		)
+		slug := strings.Join(path, "-") + ".html"
+		if err := writeLayout(filepath.Join(outDir, slug), page{
+			Title:    strings.Join(path, " ") + " - " + title,
+			CSS:      template.CSS(css),
+			Heading:  strings.Join(path, " "),
+			Crumb:    crumb,
+			Body:     body,
+			Nav:      nav,
+			HomeHref: "index.html",
+		}); err != nil {
+			return err
+		}
+		for _, sub := range cmd.Commands {
+			if err := walk(path, sub); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	for _, c := range n.Subcommands {
-		if err := walk(c, fn); err != nil {
+	for _, sub := range root.Commands {
+		if err := walk(nil, sub); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-var tplFuncs = template.FuncMap{
-	"join": func(parts []string, sep string) string {
-		return strings.Join(parts, sep)
-	},
-	"hasMetadata": func(md map[string]any, keys []string) bool {
-		for _, k := range keys {
-			if _, ok := md[k]; ok {
-				return true
-			}
+// buildNavHTML renders the command tree as a <nav> block. linkBase is "" for
+// single-page (anchors) or "" for multi-page (per-page slugs); we always
+// produce slug links and the layout decides whether to resolve them.
+//
+// Single-page mode emits anchor links keyed off the heading text that
+// cli-docs / goldmark produce; per-page mode emits per-file slugs.
+func buildNavHTML(root *cli.Command, _ string) (template.HTML, error) {
+	var b bytes.Buffer
+	b.WriteString(`<ul class="tree">`)
+	var walk func(prefix []string, cmd *cli.Command)
+	walk = func(prefix []string, cmd *cli.Command) {
+		if cmd.Hidden {
+			return
 		}
-		return false
-	},
-	"metaValue": func(md map[string]any, k string) any {
-		return md[k]
-	},
+		path := append(append([]string(nil), prefix...), cmd.Name)
+		slug := strings.Join(path, "-") + ".html"
+		fmt.Fprintf(&b, `<li><a href="%s"><code>%s</code></a>`,
+			template.HTMLEscapeString(slug),
+			template.HTMLEscapeString(strings.Join(path, " ")),
+		)
+		if cmd.Usage != "" {
+			fmt.Fprintf(&b, ` <span class="muted">%s</span>`, template.HTMLEscapeString(cmd.Usage))
+		}
+		if len(cmd.Commands) > 0 {
+			b.WriteString(`<ul>`)
+			for _, sub := range cmd.Commands {
+				walk(path, sub)
+			}
+			b.WriteString(`</ul>`)
+		}
+		b.WriteString(`</li>`)
+	}
+	for _, sub := range root.Commands {
+		walk(nil, sub)
+	}
+	b.WriteString(`</ul>`)
+	return template.HTML(b.String()), nil //nolint:gosec
+}
+
+func writeLayout(path string, p page) error {
+	t, err := template.New("layout").Parse(layoutTpl)
+	if err != nil {
+		return fmt.Errorf("webdocs: parse layout: %w", err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("webdocs: create %s: %w", path, err)
+	}
+	defer f.Close()
+	return t.Execute(f, p)
 }
