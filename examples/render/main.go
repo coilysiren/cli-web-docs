@@ -42,9 +42,8 @@ func main() {
 	}
 
 	if err := webdocs.Render(app, webdocs.Options{
-		OutputDir:    out,
-		Title:        "demo docs",
-		MetadataKeys: []string{"since"},
+		OutputDir: out,
+		Title:     "demo docs",
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, "render:", err)
 		os.Exit(1)

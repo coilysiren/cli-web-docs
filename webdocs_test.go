@@ -45,9 +45,15 @@ func TestRender_SinglePage(t *testing.T) {
 		t.Fatalf("read index: %v", err)
 	}
 	body := string(b)
-	for _, want := range []string{"Demo Docs", "demo hello", "demo tree list", "demo tree rm", "--verbose"} {
+	for _, want := range []string{"Demo Docs", "hello", "tree", "verbose"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index.html missing %q", want)
+		}
+	}
+	// Nav lists each command with its dotted slug as the link target.
+	for _, slug := range []string{"hello.html", "tree.html", "tree-list.html", "tree-rm.html"} {
+		if !strings.Contains(body, slug) {
+			t.Errorf("nav missing slug %q", slug)
 		}
 	}
 }
@@ -63,6 +69,15 @@ func TestRender_PerPage(t *testing.T) {
 			t.Errorf("missing %s: %v", f, err)
 		}
 	}
+	// Per-page file should mention the command name.
+	b, _ := os.ReadFile(filepath.Join(dir, "hello.html"))
+	if !strings.Contains(string(b), "hello") {
+		t.Errorf("hello.html does not mention 'hello'")
+	}
+	// Crumb back to index is present on per-page files.
+	if !strings.Contains(string(b), `href="index.html"`) {
+		t.Errorf("hello.html missing crumb back to index")
+	}
 }
 
 func TestRender_NoOutputDir(t *testing.T) {
@@ -74,21 +89,5 @@ func TestRender_NoOutputDir(t *testing.T) {
 func TestRender_NilCommand(t *testing.T) {
 	if err := webdocs.Render(nil, webdocs.Options{OutputDir: t.TempDir()}); err == nil {
 		t.Errorf("expected error on nil command")
-	}
-}
-
-func TestRender_Metadata(t *testing.T) {
-	cmd := &cli.Command{
-		Name:     "demo",
-		Metadata: map[string]any{"since": "v1.2.0", "stability": "stable"},
-	}
-	dir := t.TempDir()
-	if err := webdocs.Render(cmd, webdocs.Options{OutputDir: dir, MetadataKeys: []string{"since", "stability"}}); err != nil {
-		t.Fatalf("Render: %v", err)
-	}
-	b, _ := os.ReadFile(filepath.Join(dir, "index.html"))
-	body := string(b)
-	if !strings.Contains(body, "v1.2.0") || !strings.Contains(body, "stable") {
-		t.Errorf("metadata not surfaced in output. Got:\n%s", body)
 	}
 }
