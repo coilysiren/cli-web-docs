@@ -7,3 +7,8 @@ require (
 	github.com/urfave/cli/v3 v3.8.0
 	github.com/yuin/goldmark v1.7.8
 )
+
+require (
+	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+)
