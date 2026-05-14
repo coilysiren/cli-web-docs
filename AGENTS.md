@@ -8,12 +8,12 @@ Static HTML documentation generator for urfave/cli v3 command trees. Pipeline: `
 
 ## Dev verbs
 
-Route through coily, not bare go. The `.coily/coily.yaml` ↔ `Makefile` contract is checked on every CI run via `coily lint`:
+Route through agent-guard, not bare go. The `.agent-guard/agent-guard.yaml` ↔ `Makefile` contract is checked on every CI run via `agent-guard lint`:
 
-- `coily exec build` - compile every package.
-- `coily exec test` - run the unit test suite.
-- `coily exec lint` - golangci-lint v2.12.2 with the urfave-mirrored `.golangci.yaml`.
-- `coily exec vet`, `tidy`, `cover` - the usual.
+- `agent-guard exec build` - compile every package.
+- `agent-guard exec test` - run the unit test suite.
+- `agent-guard exec lint` - golangci-lint v2.12.2 with the urfave-mirrored `.golangci.yaml`.
+- `agent-guard exec vet`, `tidy`, `cover` - the usual.
 
 ## Layout subpackage is a contract
 

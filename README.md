@@ -15,7 +15,7 @@ cli-web-docs is a **static HTML documentation generator** for [urfave/cli][urfav
 
 ## Documentation
 
-See [`docs/FEATURES.md`](docs/FEATURES.md) for a feature inventory and [`examples/`](examples/) for four runnable demos (`render`, `multi-page`, `custom-theme`, `deep-tree`). Local dev verbs live in [`.coily/coily.yaml`](.coily/coily.yaml); `coily lint` validates that against the [`Makefile`](Makefile).
+See [`docs/FEATURES.md`](docs/FEATURES.md) for a feature inventory and [`examples/`](examples/) for four runnable demos (`render`, `multi-page`, `custom-theme`, `deep-tree`). Local dev verbs live in [`.agent-guard/agent-guard.yaml`](.agent-guard/agent-guard.yaml); `agent-guard lint` validates that against the [`Makefile`](Makefile).
 
 ## Support
 

@@ -28,7 +28,7 @@ Inventory of what cli-web-docs does today. Scope changes should land in the same
 
 ## Repo development
 
-- `.coily/coily.yaml` declares local dev verbs.
+- `.agent-guard/agent-guard.yaml` declares local dev verbs.
 - `Makefile` is the source of truth.
 - `coily lint` validates the yaml/Makefile contract on every CI run.
 - `.golangci.yaml`, `staticcheck.conf` mirror urfave/cli.
