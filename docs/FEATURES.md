@@ -33,3 +33,11 @@ Inventory of what cli-web-docs does today. Scope changes should land in the same
 - `coily lint` validates the yaml/Makefile contract on every CI run.
 - `.golangci.yaml`, `staticcheck.conf` mirror urfave/cli.
 - GitHub Actions CI runs vet/build/test/lint.
+
+## See also
+
+- [README.md](../README.md) - human-facing intro.
+- [AGENTS.md](../AGENTS.md) - agent-facing operating rules.
+- [.agent-guard/agent-guard.yaml](../.agent-guard/agent-guard.yaml) - allowlisted commands.
+
+Cross-reference convention from [coilysiren/agentic-os#59](https://github.com/coilysiren/agentic-os/issues/59).
